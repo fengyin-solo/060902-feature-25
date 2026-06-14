@@ -51,8 +51,20 @@
 
         <div class="post-stats">
           <span>💭 {{ post.guesses.length }} 个猜测</span>
-          <span v-if="post.context">🔓 已揭晓</span>
-          <span v-else>🔒 待揭晓</span>
+          <span v-if="post.context" class="status-revealed">🔓 已揭晓</span>
+          <span v-else class="status-pending">🔒 待揭晓</span>
+        </div>
+
+        <div v-if="!post.context" class="reveal-progress">
+          <div class="progress-bar-mini">
+            <div 
+              class="progress-fill-mini" 
+              :style="{ width: getProgressPercent(post) + '%' }"
+            ></div>
+          </div>
+          <span class="progress-label">
+            {{ post.guesses.length }} / {{ getRevealThreshold(post) }} 人
+          </span>
         </div>
 
         <div class="post-actions">
@@ -94,65 +106,21 @@ import { store } from '@/store'
 const allPosts = computed(() => {
   return [
     ...store.anonymousPosts,
-    ...demoPosts
+    ...store.demoPosts
   ].sort((a, b) => b.date - a.date)
 })
 
-const demoPosts = [
-  {
-    id: 'demo1',
-    message: '想你了，真的好想好想',
-    date: Date.now() - 86400000,
-    isSent: false,
-    context: null,
-    tags: [{ type: 'miss', text: '思念' }],
-    guesses: [
-      { id: 'g1', text: '应该是异地恋，好久没见了吧？', likes: 12 },
-      { id: 'g2', text: '会不会是刚吵架和好？', likes: 8 }
-    ],
-    anonymous: true,
-    originalConversation: null
-  },
-  {
-    id: 'demo2',
-    message: '晚安，梦里见 🌙',
-    date: Date.now() - 86400000 * 2,
-    isSent: true,
-    context: {
-      prev: '今天好累啊，先睡了',
-      next: '晚安呀，明天见 ❤️'
-    },
-    tags: [{ type: 'night', text: '晚安' }],
-    guesses: [
-      { id: 'g3', text: '好甜！应该是热恋期吧', likes: 25 }
-    ],
-    anonymous: true,
-    originalConversation: null
-  },
-  {
-    id: 'demo3',
-    message: '对不起，我错了还不行吗 😢',
-    date: Date.now() - 86400000 * 3,
-    isSent: true,
-    context: null,
-    tags: [{ type: 'sorry', text: '道歉' }],
-    guesses: [
-      { id: 'g4', text: '是不是又忘了什么纪念日？', likes: 32 },
-      { id: 'g5', text: '我猜是打游戏忘了回消息', likes: 28 },
-      { id: 'g6', text: '感觉是惹女朋友生气了哈哈哈', likes: 19 }
-    ],
-    anonymous: true,
-    originalConversation: null
-  }
-]
+function getRevealThreshold(post) {
+  return post.revealThreshold || 5
+}
+
+function getProgressPercent(post) {
+  const threshold = getRevealThreshold(post)
+  return Math.min(100, (post.guesses.length / threshold) * 100)
+}
 
 function revealContext(post) {
-  if (!post.context) {
-    post.context = {
-      prev: '这是上一条消息的内容',
-      next: '这是下一条消息的内容'
-    }
-  }
+  store.revealContext(post.id)
 }
 
 function formatDate(timestamp) {
@@ -307,5 +275,77 @@ onMounted(() => {
   padding: 0.5rem;
   background: white;
   border-radius: 6px;
+}
+
+.status-revealed {
+  color: #00B42A;
+  font-weight: 600;
+  background: #f0fff4;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+}
+
+.status-pending {
+  color: #FF7D00;
+  font-weight: 500;
+  background: #fff7e6;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+}
+
+.reveal-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #fff5f5, #fff0f6);
+  border-radius: 8px;
+}
+
+.progress-bar-mini {
+  flex: 1;
+  height: 6px;
+  background: #ffe5e5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill-mini {
+  height: 100%;
+  background: linear-gradient(90deg, var(--love-pink), var(--love-red));
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.progress-label {
+  font-size: 0.8rem;
+  color: var(--love-red);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.post-card:has(.status-revealed) {
+  border: 2px solid #00B42A;
+}
+
+.post-card:has(.status-revealed)::after {
+  content: '🎉';
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  font-size: 1.5rem;
+  background: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 180, 42, 0.3);
+}
+
+.post-card {
+  position: relative;
 }
 </style>

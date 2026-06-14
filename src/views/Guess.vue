@@ -137,18 +137,18 @@
           </div>
         </div>
 
-        <div v-else class="reveal-section card">
+        <div v-else class="reveal-section card" :class="{ revealAnimation: showRevealAnimation }">
           <h3>🔒 答案还未揭晓</h3>
           <p>等更多人来猜之后，才会公布答案哦～</p>
           <p class="hint">已有 {{ currentPost.guesses.length }} 人参与猜测</p>
           <div class="progress-bar">
             <div 
               class="progress-fill" 
-              :style="{ width: Math.min(100, currentPost.guesses.length * 20) + '%' }"
+              :style="{ width: Math.min(100, (currentPost.guesses.length / revealThreshold) * 100) + '%' }"
             ></div>
           </div>
           <p class="progress-text">
-            {{ currentPost.guesses.length }} / 5 人猜测后自动揭晓
+            {{ currentPost.guesses.length }} / {{ revealThreshold }} 人猜测后自动揭晓
           </p>
         </div>
       </div>
@@ -157,13 +157,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { store } from '@/store'
 
 const route = useRoute()
 const guessText = ref('')
 const sortBy = ref('likes')
+const showRevealAnimation = ref(false)
 
 const sortOptions = [
   { value: 'likes', label: '最多点赞' },
@@ -172,61 +173,11 @@ const sortOptions = [
 ]
 
 const currentPost = computed(() => {
-  const id = route.params.id
-  let post = store.anonymousPosts.find(p => p.id === id)
-  
-  if (!post) {
-    const demoPosts = [
-      {
-        id: 'demo1',
-        message: '想你了，真的好想好想',
-        date: Date.now() - 86400000,
-        isSent: false,
-        context: null,
-        tags: [{ type: 'miss', text: '思念' }],
-        guesses: [
-          { id: 'g1', text: '应该是异地恋，好久没见了吧？', likes: 12, date: Date.now() - 7200000 },
-          { id: 'g2', text: '会不会是刚吵架和好？', likes: 8, date: Date.now() - 3600000 }
-        ],
-        anonymous: true,
-        originalConversation: null
-      },
-      {
-        id: 'demo2',
-        message: '晚安，梦里见 🌙',
-        date: Date.now() - 86400000 * 2,
-        isSent: true,
-        context: {
-          prev: '今天好累啊，先睡了',
-          next: '晚安呀，明天见 ❤️'
-        },
-        tags: [{ type: 'night', text: '晚安' }],
-        guesses: [
-          { id: 'g3', text: '好甜！应该是热恋期吧', likes: 25, date: Date.now() - 86400000 }
-        ],
-        anonymous: true,
-        originalConversation: null
-      },
-      {
-        id: 'demo3',
-        message: '对不起，我错了还不行吗 😢',
-        date: Date.now() - 86400000 * 3,
-        isSent: true,
-        context: null,
-        tags: [{ type: 'sorry', text: '道歉' }],
-        guesses: [
-          { id: 'g4', text: '是不是又忘了什么纪念日？', likes: 32, date: Date.now() - 86400000 * 2 },
-          { id: 'g5', text: '我猜是打游戏忘了回消息', likes: 28, date: Date.now() - 86400000 * 2 + 3600000 },
-          { id: 'g6', text: '感觉是惹女朋友生气了哈哈哈', likes: 19, date: Date.now() - 86400000 }
-        ],
-        anonymous: true,
-        originalConversation: null
-      }
-    ]
-    post = demoPosts.find(p => p.id === id)
-  }
-  
-  return post
+  return store.getPostById(route.params.id)
+})
+
+const revealThreshold = computed(() => {
+  return currentPost.value?.revealThreshold || 5
 })
 
 const sortedGuesses = computed(() => {
@@ -245,36 +196,40 @@ const sortedGuesses = computed(() => {
   return guesses
 })
 
+watch(() => currentPost.value?.context, (newContext, oldContext) => {
+  if (newContext && !oldContext) {
+    showRevealAnimation.value = true
+    setTimeout(() => {
+      showRevealAnimation.value = false
+    }, 3000)
+  }
+})
+
 function submitGuess() {
   if (!guessText.value.trim() || !currentPost.value) return
   
-  const guess = {
-    id: Math.random().toString(36).substr(2, 9),
-    text: guessText.value.trim(),
-    likes: 0,
-    liked: false,
-    date: Date.now()
-  }
+  const postId = currentPost.value.id
+  const wasRevealed = !!currentPost.value.context
+  const guessCountBefore = currentPost.value.guesses.length
   
-  currentPost.value.guesses.push(guess)
-  guessText.value = ''
+  const guess = store.addGuess(postId, guessText.value.trim())
   
-  if (currentPost.value.guesses.length >= 5 && !currentPost.value.context) {
-    currentPost.value.context = {
-      prev: '这是上一条消息的内容示例',
-      next: '这是下一条消息的内容示例'
+  if (guess) {
+    guessText.value = ''
+    console.log(`[Guess] Submitted guess for post ${postId}: ${guess.text}`)
+    
+    const guessCountAfter = currentPost.value.guesses.length
+    const isNowRevealed = !!currentPost.value.context
+    
+    if (!wasRevealed && isNowRevealed) {
+      console.log(`[Guess] Post ${postId} reached ${guessCountAfter}/${revealThreshold.value} guesses - auto-revealed!`)
     }
   }
 }
 
 function toggleLike(guess) {
-  if (guess.liked) {
-    guess.likes--
-    guess.liked = false
-  } else {
-    guess.likes++
-    guess.liked = true
-  }
+  if (!currentPost.value) return
+  store.toggleLike(currentPost.value.id, guess.id)
 }
 
 function getAvatarEmoji(id) {
@@ -620,5 +575,20 @@ onMounted(() => {
 .progress-text {
   font-size: 0.85rem;
   color: var(--text-light);
+}
+
+.revealAnimation {
+  animation: revealPulse 0.5s ease-in-out 3;
+}
+
+@keyframes revealPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.08);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 8rpx 32rpx rgba(231, 76, 60, 0.3);
+  }
 }
 </style>
